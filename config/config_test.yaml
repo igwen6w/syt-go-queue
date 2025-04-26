@@ -19,6 +19,12 @@ deepseek:
   timeout: 5s
   model: deepseek-chat
   max_tokens: 2000
+  circuit_breaker:
+    enabled: true
+    max_requests: 1
+    interval: 30s
+    timeout: 1m
+    fail_threshold: 0.5
 
 queue:
   concurrency: 2

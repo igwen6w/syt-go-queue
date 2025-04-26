@@ -27,6 +27,11 @@ func main() {
 		panic("Failed to unmarshal config: " + err.Error())
 	}
 
+	// 验证配置
+	if err := config.ValidateConfig(&cfg); err != nil {
+		panic("Invalid configuration: " + err.Error())
+	}
+
 	// 初始化日志
 	logger.Init(cfg.Logger.Level, cfg.Logger.Development)
 	defer logger.Sync()

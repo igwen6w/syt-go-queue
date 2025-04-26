@@ -10,9 +10,9 @@
 
 ## Medium Priority
 
-- **Add Metrics Collection**: Implement basic metrics for monitoring (request counts, error rates, processing times).
-- **Expand API Endpoints**: Add endpoints for task status checking and management.
-- **Implement Circuit Breaking**: Add circuit breaking for external service calls.
+- ✅ **Add Metrics Collection**: Implement basic metrics for monitoring (request counts, error rates, processing times).
+- ✅ **Expand API Endpoints**: Add endpoints for task status checking and management.
+- ✅ **Implement Circuit Breaking**: Add circuit breaking for external service calls.
 - **Enhance Configuration Validation**: Validate all configuration sections, not just worker config.
 - **Improve Test Coverage**: Add more unit and integration tests, especially for API handlers.
 

@@ -8,8 +8,11 @@ import (
 	"github.com/igwen6w/syt-go-queue/internal/database"
 	"github.com/igwen6w/syt-go-queue/internal/handler"
 	"github.com/igwen6w/syt-go-queue/internal/logger"
+	"github.com/igwen6w/syt-go-queue/internal/middleware"
 	"github.com/jmoiron/sqlx"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+	"net/http"
 )
 
 type Server struct {
@@ -38,6 +41,9 @@ func NewServer(cfg *config.Config) *Server {
 	// 初始化 Gin 引擎
 	engine := gin.Default()
 
+	// 添加指标收集中间件
+	engine.Use(middleware.MetricsMiddleware())
+
 	// 设置认证
 	if cfg.Auth.Enabled {
 		logger.Info("Enabling authentication", zap.String("realm", cfg.Auth.Realm))
@@ -61,8 +67,15 @@ func NewServer(cfg *config.Config) *Server {
 }
 
 func (s *Server) setupRoutes() {
+	// 创建 Redis 客户端配置，用于任务检查器
+	redisOpt := asynq.RedisClientOpt{
+		Addr:     s.cfg.Redis.Addr,
+		Password: s.cfg.Redis.Password,
+		DB:       s.cfg.Redis.DB,
+	}
+
 	// 创建任务处理器
-	taskHandler := handler.NewTaskHandler(s.client, s.db)
+	taskHandler := handler.NewTaskHandler(s.client, s.db, redisOpt)
 
 	// 创建健康检查处理器
 	healthHandler := handler.NewHealthHandler(s.db, s.client)
@@ -82,11 +95,29 @@ func (s *Server) setupRoutes() {
 		c.Next()
 	}).GET("/ready", healthHandler.ReadinessCheck)
 
+	// 指标端点 - 不需要认证
+	s.engine.GET("/metrics", func(c *gin.Context) {
+		// 跳过认证中间件
+		c.Next()
+		// 使用 promhttp 处理指标请求
+		promhttp.Handler().ServeHTTP(c.Writer, c.Request)
+	})
+
 	// API 路由
 	api := s.engine.Group("/api")
 	{
+		// 任务创建路由
 		api.POST("/tasks/llm", taskHandler.CreateLLMTask)
-		// 可以添加更多路由...
+
+		// 任务管理路由
+		tasks := api.Group("/tasks")
+		{
+			// 获取任务状态
+			tasks.GET("/:id", taskHandler.GetTaskStatus)
+
+			// 列出任务
+			tasks.GET("", taskHandler.ListTasks)
+		}
 	}
 }
 

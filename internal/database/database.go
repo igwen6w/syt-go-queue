@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql" // MySQL 驱动
+	"github.com/igwen6w/syt-go-queue/internal/metrics"
 	"github.com/igwen6w/syt-go-queue/internal/utils"
 	"github.com/jmoiron/sqlx"
 	"regexp"
@@ -81,8 +82,12 @@ func validateFieldName(fieldName string) error {
 
 // GetValuationRecord 获取评估记录
 func (d *Database) GetValuationRecord(ctx context.Context, tableName string, id int64) (*ValuationRecord, error) {
+	// 记录数据库查询指标并计时
+	defer metrics.MeasureDatabaseQueryDuration("get_record")()
+
 	// 验证表名
 	if err := validateTableName(tableName); err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("get_record", "validation_error").Inc()
 		return nil, err
 	}
 
@@ -94,23 +99,35 @@ func (d *Database) GetValuationRecord(ctx context.Context, tableName string, id 
 	var record ValuationRecord
 	err := d.db.GetContext(ctx, &record, query, id)
 	if err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("get_record", "error").Inc()
 		return nil, fmt.Errorf("failed to get valuation record: %w", err)
 	}
+
+	// 记录成功查询
+	metrics.DatabaseQueryCounter.WithLabelValues("get_record", "success").Inc()
 	return &record, nil
 }
 
 // UpdateStatus 更新状态
 func (d *Database) UpdateStatus(ctx context.Context, tableName string, id int64, status string) error {
+	// 记录数据库更新指标并计时
+	defer metrics.MeasureDatabaseQueryDuration("update_status")()
+
 	// 验证表名
 	if err := validateTableName(tableName); err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("update_status", "validation_error").Inc()
 		return err
 	}
 
 	query := fmt.Sprintf("UPDATE %s SET status = ? WHERE id = ?", tableName)
 	_, err := d.db.ExecContext(ctx, query, status, id)
 	if err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("update_status", "error").Inc()
 		return fmt.Errorf("failed to update status: %w", err)
 	}
+
+	// 记录成功更新
+	metrics.DatabaseQueryCounter.WithLabelValues("update_status", "success").Inc()
 	return nil
 }
 
@@ -131,14 +148,19 @@ func (d *Database) UpdateFailedInfo(ctx context.Context, tableName string, id in
 
 // UpdateRecord 更新记录
 func (d *Database) UpdateRecord(ctx context.Context, tableName string, id int64, updates map[string]interface{}) error {
+	// 记录数据库更新指标并计时
+	defer metrics.MeasureDatabaseQueryDuration("update_record")()
+
 	// 验证表名
 	if err := validateTableName(tableName); err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("update_record", "validation_error").Inc()
 		return err
 	}
 
 	// 验证字段名
 	for field, value := range updates {
 		if err := validateFieldName(field); err != nil {
+			metrics.DatabaseQueryCounter.WithLabelValues("update_record", "field_validation_error").Inc()
 			return err
 		}
 
@@ -146,6 +168,7 @@ func (d *Database) UpdateRecord(ctx context.Context, tableName string, id int64,
 		if field == "callback_url" {
 			if callbackURL, ok := value.(string); ok && callbackURL != "" {
 				if err := utils.ValidateCallbackURL(callbackURL); err != nil {
+					metrics.DatabaseQueryCounter.WithLabelValues("update_record", "url_validation_error").Inc()
 					return fmt.Errorf("invalid callback URL: %w", err)
 				}
 			}
@@ -169,7 +192,11 @@ func (d *Database) UpdateRecord(ctx context.Context, tableName string, id int64,
 
 	_, err := d.db.ExecContext(ctx, query, args...)
 	if err != nil {
+		metrics.DatabaseQueryCounter.WithLabelValues("update_record", "error").Inc()
 		return fmt.Errorf("failed to update record: %w", err)
 	}
+
+	// 记录成功更新
+	metrics.DatabaseQueryCounter.WithLabelValues("update_record", "success").Inc()
 	return nil
 }

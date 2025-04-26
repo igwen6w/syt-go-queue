@@ -7,7 +7,10 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/igwen6w/syt-go-queue/internal/config"
 	"github.com/igwen6w/syt-go-queue/internal/database"
+	"github.com/igwen6w/syt-go-queue/internal/logger"
+	"github.com/igwen6w/syt-go-queue/internal/metrics"
 	"github.com/igwen6w/syt-go-queue/internal/task"
+	"go.uber.org/zap"
 	"time"
 )
 
@@ -28,6 +31,10 @@ type Worker struct {
 // 返回:
 //   - 配置好的 Worker 实例
 func NewWorker(cfg *config.Config, db *database.Database) *Worker {
+	// 记录工作者数量
+	metrics.WorkerCount.Set(float64(cfg.Queue.Concurrency))
+
+	// 创建服务器配置
 	server := asynq.NewServer(
 		asynq.RedisClientOpt{
 			Addr:     cfg.Redis.Addr,
@@ -39,6 +46,21 @@ func NewWorker(cfg *config.Config, db *database.Database) *Worker {
 			RetryDelayFunc: func(n int, err error, t *asynq.Task) time.Duration {
 				return time.Duration(n) * time.Minute
 			},
+			// 添加队列大小监控
+			Queues: map[string]int{
+				"default": 10,
+			},
+			// 添加队列状态监控
+			QueueStatsUpdater: asynq.QueueStatsUpdaterFunc(func(stats []asynq.QueueStats) {
+				for _, stat := range stats {
+					metrics.QueueSize.WithLabelValues(stat.QueueID).Set(float64(stat.Size))
+					logger.Debug("Queue stats updated",
+						zap.String("queue", stat.QueueID),
+						zap.Int("size", stat.Size),
+						zap.Int("active", stat.Active),
+						zap.Int("pending", stat.Pending))
+				}
+			}),
 		},
 	)
 
