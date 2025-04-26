@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql" // MySQL 驱动
+	"github.com/igwen6w/syt-go-queue/internal/utils"
 	"github.com/jmoiron/sqlx"
 	"regexp"
 	"strings"
@@ -29,6 +30,12 @@ type Database struct {
 
 func NewDatabase(db *sqlx.DB) *Database {
 	return &Database{db: db}
+}
+
+// Ping 检查数据库连接是否正常
+// 返回错误表示连接失败
+func (d *Database) Ping() error {
+	return d.db.Ping()
 }
 
 // validateTableName 验证表名是否合法，防止SQL注入
@@ -130,9 +137,18 @@ func (d *Database) UpdateRecord(ctx context.Context, tableName string, id int64,
 	}
 
 	// 验证字段名
-	for field := range updates {
+	for field, value := range updates {
 		if err := validateFieldName(field); err != nil {
 			return err
+		}
+
+		// 如果更新的是回调URL，验证URL是否安全
+		if field == "callback_url" {
+			if callbackURL, ok := value.(string); ok && callbackURL != "" {
+				if err := utils.ValidateCallbackURL(callbackURL); err != nil {
+					return fmt.Errorf("invalid callback URL: %w", err)
+				}
+			}
 		}
 	}
 

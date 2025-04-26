@@ -24,3 +24,14 @@ queue:
   concurrency: 10
   retry: 3
   retention: 24h
+
+logger:
+  level: info
+  development: true
+
+auth:
+  enabled: true
+  realm: "SYT Go Queue API"
+  users:
+    admin: admin123
+    api: api123

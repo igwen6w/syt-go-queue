@@ -24,3 +24,13 @@ queue:
   concurrency: 2
   retry: 3
   retention: 24h
+
+logger:
+  level: debug
+  development: true
+
+auth:
+  enabled: false  # 测试环境禁用认证
+  realm: "SYT Go Queue API Test"
+  users:
+    test: test123

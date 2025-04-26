@@ -11,6 +11,7 @@ type Config struct {
 	Deepseek DeepseekConfig `mapstructure:"deepseek"`
 	Queue    QueueConfig    `mapstructure:"queue"`
 	Logger   LoggerConfig   `mapstructure:"logger"`
+	Auth     AuthConfig     `mapstructure:"auth"`
 }
 
 type AppConfig struct {
@@ -48,4 +49,10 @@ type QueueConfig struct {
 type LoggerConfig struct {
 	Level       string `mapstructure:"level"`
 	Development bool   `mapstructure:"development"`
+}
+
+type AuthConfig struct {
+	Enabled bool              `mapstructure:"enabled"`
+	Users   map[string]string `mapstructure:"users"` // username -> password
+	Realm   string            `mapstructure:"realm"` // Basic Auth realm
 }

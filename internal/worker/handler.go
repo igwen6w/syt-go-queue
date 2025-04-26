@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/hibiken/asynq"
 	"github.com/igwen6w/syt-go-queue/internal/config"
 	"github.com/igwen6w/syt-go-queue/internal/database"
+	"github.com/igwen6w/syt-go-queue/internal/logger"
 	"github.com/igwen6w/syt-go-queue/internal/task"
+	"github.com/igwen6w/syt-go-queue/internal/utils"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"time"
@@ -57,6 +59,11 @@ func NewTaskHandler(db *database.Database, cfg config.DeepseekConfig) *TaskHandl
 // 返回:
 //   - 如果回调请求失败，返回错误
 func (h *TaskHandler) sendCallback(ctx context.Context, callbackURL string, result string) error {
+	// 验证回调URL是否安全
+	if err := utils.ValidateCallbackURL(callbackURL); err != nil {
+		return errors.Wrap(err, "callback URL validation failed")
+	}
+
 	payload := map[string]interface{}{
 		"result":    result,
 		"status":    "success",
@@ -148,8 +155,11 @@ func (h *TaskHandler) HandleLLMTask(ctx context.Context, t *asynq.Task) error {
 	if record.CallbackURL != "" {
 		if err := h.sendCallback(ctx, record.CallbackURL, result); err != nil {
 			// 回调失败不应该影响任务完成，只记录错误
-			// 在实际生产环境中，应该使用日志记录这个错误
-			fmt.Printf("Warning: callback failed: %v\n", err)
+			logger.Warn("Callback failed",
+				zap.String("callback_url", record.CallbackURL),
+				zap.Int64("record_id", record.ID),
+				zap.String("table_name", p.TableName),
+				zap.Error(err))
 		}
 	}
 
