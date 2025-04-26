@@ -1,0 +1,24 @@
+app:
+  name: syt-go-queue-test
+  mode: test
+  port: 8081
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 1  # 使用不同的数据库编号避免影响生产数据
+
+mysql:
+  dsn: root:password@tcp(localhost:33060)/syt_queue_test?charset=utf8mb4&parseTime=True&loc=Local
+  max_idle_conns: 5
+  max_open_conns: 10
+
+deepseek:
+  api_key: test_api_key
+  base_url: https://api.deepseek.com/v1
+  timeout: 5s
+
+queue:
+  concurrency: 2
+  retry: 3
+  retention: 24h

@@ -1,0 +1,24 @@
+app:
+  name: syt-go-queue
+  mode: development
+  port: 8080
+
+redis:
+  addr: localhost:6390
+  password: ""
+  db: 0
+
+mysql:
+  dsn: root:password@tcp(localhost:3306)/syt_queue?charset=utf8mb4&parseTime=True&loc=Local
+  max_idle_conns: 10
+  max_open_conns: 100
+
+deepseek:
+  api_key: your_api_key
+  base_url: https://api.deepseek.com/v1
+  timeout: 30s
+
+queue:
+  concurrency: 10
+  retry: 3
+  retention: 24h
