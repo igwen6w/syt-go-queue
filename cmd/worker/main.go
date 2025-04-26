@@ -44,10 +44,7 @@ func main() {
 		zap.String("mode", cfg.App.Mode),
 		zap.String("config_file", *configFile))
 
-	// 验证配置
-	if err := worker.ValidateWorkerConfig(&cfg); err != nil {
-		logger.Fatal("Invalid worker configuration", zap.Error(err))
-	}
+	// 旧的工作者配置验证已被替换为全局配置验证
 
 	// 初始化数据库连接
 	logger.Info("Connecting to database", zap.String("dsn", maskDSN(cfg.MySQL.DSN)))

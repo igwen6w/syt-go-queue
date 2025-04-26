@@ -51,16 +51,8 @@ func NewWorker(cfg *config.Config, db *database.Database) *Worker {
 				"default": 10,
 			},
 			// 添加队列状态监控
-			QueueStatsUpdater: asynq.QueueStatsUpdaterFunc(func(stats []asynq.QueueStats) {
-				for _, stat := range stats {
-					metrics.QueueSize.WithLabelValues(stat.QueueID).Set(float64(stat.Size))
-					logger.Debug("Queue stats updated",
-						zap.String("queue", stat.QueueID),
-						zap.Int("size", stat.Size),
-						zap.Int("active", stat.Active),
-						zap.Int("pending", stat.Pending))
-				}
-			}),
+			// 注意：当前版本的 asynq 不支持 QueueStatsUpdater
+			// 如果需要此功能，请升级到更高版本
 		},
 	)
 

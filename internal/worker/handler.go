@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/hibiken/asynq"
 	"github.com/igwen6w/syt-go-queue/internal/circuitbreaker"
 	"github.com/igwen6w/syt-go-queue/internal/config"

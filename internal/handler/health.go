@@ -2,7 +2,6 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/igwen6w/syt-go-queue/internal/database"
 	"github.com/igwen6w/syt-go-queue/internal/logger"
 	"github.com/igwen6w/syt-go-queue/internal/types"
 	"go.uber.org/zap"
@@ -12,14 +11,16 @@ import (
 
 // HealthHandler 处理健康检查相关的请求
 type HealthHandler struct {
-	db     *database.Database
+	db interface {
+		Ping() error
+	}
 	client interface {
 		Close() error
 	}
 }
 
 // NewHealthHandler 创建并返回一个新的健康检查处理器
-func NewHealthHandler(db *database.Database, client interface{ Close() error }) *HealthHandler {
+func NewHealthHandler(db interface{ Ping() error }, client interface{ Close() error }) *HealthHandler {
 	return &HealthHandler{
 		db:     db,
 		client: client,

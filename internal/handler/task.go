@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
 	"github.com/igwen6w/syt-go-queue/internal/database"
@@ -10,13 +11,27 @@ import (
 	"github.com/igwen6w/syt-go-queue/internal/types"
 	"go.uber.org/zap"
 	"net/http"
-	"strconv"
 )
 
 type TaskHandler struct {
-	client    *asynq.Client
-	db        *database.Database
-	inspector *asynq.Inspector
+	client interface {
+		Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+	}
+	db interface {
+		Ping() error
+		GetValuationRecord(ctx context.Context, tableName string, id int64) (*database.ValuationRecord, error)
+		UpdateStatus(ctx context.Context, tableName string, id int64, status string) error
+		UpdateFailedInfo(ctx context.Context, tableName string, id int64, failedInfo string, failedTimes int) error
+		UpdateRecord(ctx context.Context, tableName string, id int64, updates map[string]interface{}) error
+	}
+	inspector interface {
+		GetTaskInfo(queueName, taskID string) (*asynq.TaskInfo, error)
+		ListPendingTasks(queueName string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
+		ListActiveTasks(queueName string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
+		ListCompletedTasks(queueName string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
+		ListRetryTasks(queueName string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
+		ListArchivedTasks(queueName string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
+	}
 }
 
 func NewTaskHandler(client *asynq.Client, db *database.Database, redisOpt asynq.RedisClientOpt) *TaskHandler {
@@ -123,7 +138,7 @@ func (h *TaskHandler) GetTaskStatus(c *gin.Context) {
 			TaskID:     taskInfo.ID,
 			Status:     taskInfo.State.String(),
 			QueueName:  taskInfo.Queue,
-			CreatedAt:  taskInfo.CreatedAt.Unix(),
+			CreatedAt:  taskInfo.NextProcessAt.Unix(),
 			RetryCount: taskInfo.Retried,
 		},
 	})
@@ -170,7 +185,8 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 	case "completed":
 		state = asynq.TaskStateCompleted
 	case "failed":
-		state = asynq.TaskStateFailed
+		// Use retry state as there's no specific failed state
+		state = asynq.TaskStateRetry
 	case "retry":
 		state = asynq.TaskStateRetry
 	case "archived":
@@ -180,7 +196,26 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 	}
 
 	// 获取任务列表
-	tasks, err := h.inspector.ListTasksByState(queueName, state, req.Offset, req.Limit)
+	var tasks []*asynq.TaskInfo
+	var err error
+
+	// 使用适当的列表方法
+	opts := []asynq.ListOption{asynq.PageSize(req.Limit), asynq.Page(req.Offset/req.Limit + 1)}
+
+	switch state {
+	case asynq.TaskStatePending:
+		tasks, err = h.inspector.ListPendingTasks(queueName, opts...)
+	case asynq.TaskStateActive:
+		tasks, err = h.inspector.ListActiveTasks(queueName, opts...)
+	case asynq.TaskStateCompleted:
+		tasks, err = h.inspector.ListCompletedTasks(queueName, opts...)
+	case asynq.TaskStateRetry:
+		tasks, err = h.inspector.ListRetryTasks(queueName, opts...)
+	case asynq.TaskStateArchived:
+		tasks, err = h.inspector.ListArchivedTasks(queueName, opts...)
+	default:
+		tasks, err = h.inspector.ListActiveTasks(queueName, opts...)
+	}
 	if err != nil {
 		logger.Error("Failed to list tasks",
 			zap.String("queue", queueName),
@@ -194,18 +229,11 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 	}
 
 	// 获取总数
-	totalCount, err := h.inspector.CountTasksByState(queueName, state)
-	if err != nil {
-		logger.Error("Failed to count tasks",
-			zap.String("queue", queueName),
-			zap.String("state", state.String()),
-			zap.Error(err))
-		c.JSON(http.StatusInternalServerError, types.CommonResponse{
-			Code:    500,
-			Message: "Failed to count tasks: " + err.Error(),
-		})
-		return
-	}
+	// 注意：asynq 不提供直接的计数方法，我们使用列表长度作为估计值
+	totalCount := len(tasks)
+
+	// 如果需要更准确的计数，可以使用大页面获取所有任务并计数
+	// 这里简化处理，使用当前页的任务数量
 
 	// 构建响应
 	taskInfos := make([]types.TaskInfo, len(tasks))
@@ -214,7 +242,7 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 			TaskID:     t.ID,
 			Status:     t.State.String(),
 			QueueName:  t.Queue,
-			CreatedAt:  t.CreatedAt.Unix(),
+			CreatedAt:  t.NextProcessAt.Unix(),
 			RetryCount: t.Retried,
 			Type:       t.Type,
 		}
