@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/hibiken/asynq"
 	"github.com/igwen6w/syt-go-queue/internal/config"
 	"github.com/igwen6w/syt-go-queue/internal/database"
 	"github.com/igwen6w/syt-go-queue/internal/task"
 	"github.com/pkg/errors"
 	"io"
-	"net
 	"net/http"
 	"time"
+)
+
+// 状态常量
+const (
+	StatusProcessing = "处理中" // 处理中
+	StatusCompleted  = "已完成" // 已完成
+	StatusFailed     = "失败"  // 失败
 )
 
 // TaskHandler 处理异步任务的组件。
@@ -104,7 +111,7 @@ func (h *TaskHandler) HandleLLMTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// 更新状态为处理中
-	if err := h.db.UpdateStatus(ctx, p.TableName, p.ID, "处理中"); err != nil {
+	if err := h.db.UpdateStatus(ctx, p.TableName, p.ID, StatusProcessing); err != nil {
 		return errors.Wrap(err, "failed to update status")
 	}
 
@@ -113,20 +120,37 @@ func (h *TaskHandler) HandleLLMTask(ctx context.Context, t *asynq.Task) error {
 	if err != nil {
 		// 更新失败信息
 		failedTimes := record.FailedTimes + 1
-		if err := h.db.UpdateFailedInfo(ctx, p.TableName, p.ID, err.Error(), failedTimes); err != nil {
-			return errors.Wrap(err, "failed to update failed info")
+
+		// 更新状态和失败信息
+		updates := map[string]interface{}{
+			"status":       StatusFailed,
+			"failed_times": failedTimes,
+			"failed_info":  err.Error(),
 		}
+		if updateErr := h.db.UpdateRecord(ctx, p.TableName, p.ID, updates); updateErr != nil {
+			return errors.Wrap(updateErr, "failed to update failure information")
+		}
+
 		return errors.Wrap(err, "failed to process LLM")
 	}
 
 	// 更新处理结果
 	updates := map[string]interface{}{
-		"status":            "已完成",
+		"status":            StatusCompleted,
 		"report":            result,
 		"current_task_node": record.CurrentTaskNode + 1,
 	}
 	if err := h.db.UpdateRecord(ctx, p.TableName, p.ID, updates); err != nil {
 		return errors.Wrap(err, "failed to update record")
+	}
+
+	// 如果有回调URL，发送回调请求
+	if record.CallbackURL != "" {
+		if err := h.sendCallback(ctx, record.CallbackURL, result); err != nil {
+			// 回调失败不应该影响任务完成，只记录错误
+			// 在实际生产环境中，应该使用日志记录这个错误
+			fmt.Printf("Warning: callback failed: %v\n", err)
+		}
 	}
 
 	return nil
@@ -144,25 +168,25 @@ func (h *TaskHandler) HandleLLMTask(ctx context.Context, t *asynq.Task) error {
 //   - 处理结果字符串
 //   - 如果处理失败，返回错误
 func (h *TaskHandler) processLLM(ctx context.Context, record *database.ValuationRecord) (string, error) {
-	// 创建一个带有超时的上下文
+	// 创建一个带有超时的上下文，继承父上下文的取消信号
+	// 如果父上下文被取消，这个上下文也会被取消
 	ctx, cancel := context.WithTimeout(ctx, h.deepseek.Timeout)
-	defer cancel()
+	defer cancel() // 确保在函数返回前释放资源
 
 	// 构建请求体
 	payload := map[string]interface{}{
-		"model": "deepseek-chat",
+		"model": h.deepseek.Model,
 		"messages": []map[string]string{
+			{
 				"role":    "system",
-				"role": "system",
 				"content": record.SysMessage,
 			},
+			{
 				"role":    "user",
-				"role": "user",
 				"content": record.UserMessage,
 			},
 		},
-		"max_tokens":  2000,
-		"max_tokens": 2000,
+		"max_tokens": h.deepseek.MaxTokens,
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -189,7 +213,10 @@ func (h *TaskHandler) processLLM(ctx context.Context, record *database.Valuation
 
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", errors.Wrap(readErr, "failed to read error response body")
+		}
 		return "", errors.Errorf("LLM API request failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 

@@ -20,6 +20,7 @@ type ValuationRecord struct {
 	Progress        string `db:"progress"`
 	ProgressInfo    string `db:"progress_info"`
 	CurrentTaskNode int    `db:"current_task_node"`
+	CallbackURL     string `db:"callback_url"`
 }
 
 type Database struct {
@@ -80,7 +81,7 @@ func (d *Database) GetValuationRecord(ctx context.Context, tableName string, id 
 
 	query := fmt.Sprintf(`
         SELECT id, status, user_message, sys_message, report,
-               failed_times, failed_info, progress, progress_info, current_task_node
+               failed_times, failed_info, progress, progress_info, current_task_node, callback_url
         FROM %s WHERE id = ?`, tableName)
 
 	var record ValuationRecord

@@ -17,6 +17,8 @@ deepseek:
   api_key: your_api_key
   base_url: https://api.deepseek.com/v1
   timeout: 30s
+  model: deepseek-chat
+  max_tokens: 2000
 
 queue:
   concurrency: 10

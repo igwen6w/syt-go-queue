@@ -32,9 +32,11 @@ type MySQLConfig struct {
 }
 
 type DeepseekConfig struct {
-	APIKey  string        `mapstructure:"api_key"`
-	BaseURL string        `mapstructure:"base_url"`
-	Timeout time.Duration `mapstructure:"timeout"`
+	APIKey    string        `mapstructure:"api_key"`
+	BaseURL   string        `mapstructure:"base_url"`
+	Timeout   time.Duration `mapstructure:"timeout"`
+	Model     string        `mapstructure:"model"`
+	MaxTokens int           `mapstructure:"max_tokens"`
 }
 
 type QueueConfig struct {

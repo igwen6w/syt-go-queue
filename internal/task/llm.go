@@ -1,3 +1,5 @@
+// Package task 定义了异步任务的类型和载荷结构。
+// 该包提供了创建不同类型任务的工具函数。
 package task
 
 import (
